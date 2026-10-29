@@ -136,9 +136,21 @@ function setHighlightPin1(value) {
 function setHighlightRowOnClick(value) {
   settings.highlightRowOnClick = value;
   writeStorage("highlightRowOnClick", value);
+  var zoomCheckbox = document.getElementById("zoomToSelectCheckbox");
+  zoomCheckbox.disabled = !value;
+  document.getElementById("zoomToSelectLabel").classList.toggle("disabled", !value);
+  if (!value) {
+    setZoomToSelect(false);
+  }
   if (initDone) {
     populateBomTable();
   }
+}
+
+function setZoomToSelect(value) {
+  settings.zoomToSelect = !!value && !!settings.highlightRowOnClick;
+  writeStorage("zoomToSelect", settings.zoomToSelect);
+  document.getElementById("zoomToSelectCheckbox").checked = settings.zoomToSelect;
 }
 
 function getStoredCheckboxRefs(checkbox) {

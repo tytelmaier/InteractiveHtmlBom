@@ -424,6 +424,8 @@ function resetSettings() {
 function overwriteSettings(newSettings) {
   initDone = false;
   Object.assign(settings, newSettings);
+  // Older settings files do not contain the zoom option.
+  var importedZoomToSelect = newSettings.zoomToSelect === true;
   writeStorage("bomlayout", settings.bomlayout);
   writeStorage("bommode", settings.bommode);
   writeStorage("canvaslayout", settings.canvaslayout);
@@ -453,6 +455,7 @@ function overwriteSettings(newSettings) {
   document.getElementById("dragCheckbox").checked = settings.redrawOnDrag;
   setHighlightRowOnClick(settings.highlightRowOnClick);
   document.getElementById("highlightRowOnClickCheckbox").checked = settings.highlightRowOnClick;
+  setZoomToSelect(importedZoomToSelect);
   setDarkMode(settings.darkMode);
   document.getElementById("darkmodeCheckbox").checked = settings.darkMode;
   setHighlightPin1(settings.highlightpin1);
@@ -498,6 +501,8 @@ var settings = {
   darkMode: false,
   highlightpin1: "none",
   redrawOnDrag: true,
+  highlightRowOnClick: false,
+  zoomToSelect: false,
   boardRotation: 0,
   offsetBackRotation: false,
   renderPads: true,
@@ -580,7 +585,10 @@ function initDefaults() {
   }
   initBooleanSetting("dnpOutline", false, "dnpOutlineCheckbox", dnpOutline);
   initBooleanSetting("redrawOnDrag", config.redraw_on_drag, "dragCheckbox", setRedrawOnDrag);
+  // Read the child first: initializing a disabled parent clears its saved value.
+  var savedZoomToSelect = readStorage("zoomToSelect") === "true";
   initBooleanSetting("highlightRowOnClick", false, "highlightRowOnClickCheckbox", setHighlightRowOnClick);
+  setZoomToSelect(savedZoomToSelect);
   initBooleanSetting("darkmode", config.dark_mode, "darkmodeCheckbox", setDarkMode);
 
   var fields = ["checkboxes", "References"].concat(config.fields).concat(["Quantity"]);

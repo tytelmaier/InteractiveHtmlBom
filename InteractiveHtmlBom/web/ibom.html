@@ -119,10 +119,16 @@
             <input id="dnpOutlineCheckbox" type="checkbox" checked onchange="dnpOutline(this.checked)">
             DNP outlined
           </label>
-          <label class="menu-label">
-            <input id="highlightRowOnClickCheckbox" type="checkbox" checked onchange="setHighlightRowOnClick(this.checked)">
-            Highlight row on click
-          </label>
+          <div class="menu-label">
+            <label>
+              <input id="highlightRowOnClickCheckbox" type="checkbox" checked onchange="setHighlightRowOnClick(this.checked)">
+              Highlight row on click
+            </label>
+            <label class="menu-label-child" id="zoomToSelectLabel" title="Requires Highlight row on click">
+              <input id="zoomToSelectCheckbox" type="checkbox" disabled onchange="setZoomToSelect(this.checked)">
+              Zoom to selected
+            </label>
+          </div>
           <label class="menu-label">
             <input id="dragCheckbox" type="checkbox" checked onchange="setRedrawOnDrag(this.checked)">
             Continuous redraw on drag
