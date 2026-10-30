@@ -269,6 +269,31 @@ canvas:active {
   color: #1cb53d;
 }
 
+.bom button.bom-reference,
+.dark .bom button.bom-reference {
+  appearance: none;
+  color: inherit;
+  font: inherit;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-decoration: none;
+  vertical-align: baseline;
+  cursor: pointer;
+}
+
+.bom button.bom-reference:hover {
+  text-decoration: underline;
+}
+
+.bom-reference:focus-visible {
+  outline: 2px solid #1976d2;
+  outline-offset: 1px;
+}
+
 .dark .bom tr.checked {
   color: #2cce54;
 }
@@ -450,6 +475,17 @@ mark.highlight {
 .dark mark.highlight {
   background-color: #76a6da;
   color: #111;
+}
+
+/* Outline the selection without changing the table's layout. */
+.bom button.bom-reference.selected-reference {
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px #193fbd;
+}
+
+.dark .bom button.bom-reference.selected-reference {
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px #e1f0ff;
 }
 
 .menubtn {

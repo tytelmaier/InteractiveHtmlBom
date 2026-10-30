@@ -13,6 +13,7 @@ var netsToHandler = {};
 var markedFootprints = new Set();
 var highlightedFootprints = [];
 var highlightedNet = null;
+var selectedReferenceButton = null;
 var lastClicked;
 
 function dbg(html) {
@@ -72,7 +73,9 @@ function setDarkMode(value) {
   settings.darkMode = value;
   redrawIfInitDone();
   if (initDone) {
-    populateBomTable();
+    var preservedRefIndex = selectedReferenceButton && highlightedFootprints.length === 1
+      ? highlightedFootprints[0] : null;
+    populateBomTable(preservedRefIndex);
   }
 }
 
@@ -140,17 +143,23 @@ function setHighlightRowOnClick(value) {
   zoomCheckbox.disabled = !value;
   document.getElementById("zoomToSelectLabel").classList.toggle("disabled", !value);
   if (!value) {
-    setZoomToSelect(false);
+    setZoomToSelect(false, false);
   }
   if (initDone) {
     populateBomTable();
   }
 }
 
-function setZoomToSelect(value) {
+function setZoomToSelect(value, rebuild = true) {
+  var changed = settings.zoomToSelect !== (!!value && !!settings.highlightRowOnClick);
   settings.zoomToSelect = !!value && !!settings.highlightRowOnClick;
+  if (!settings.zoomToSelect && initDone) {
+    cancelZoomAnimation(allcanvas.front);
+    cancelZoomAnimation(allcanvas.back);
+  }
   writeStorage("zoomToSelect", settings.zoomToSelect);
   document.getElementById("zoomToSelectCheckbox").checked = settings.zoomToSelect;
+  if (changed && rebuild && initDone) populateBomTable();
 }
 
 function getStoredCheckboxRefs(checkbox) {
@@ -263,6 +272,7 @@ function createCheckboxHandlers(input, checkbox, references, row) {
 }
 
 function clearHighlightedFootprints() {
+  clearSelectedReference();
   if (currentHighlightedRowId) {
     document.getElementById(currentHighlightedRowId).classList.remove("highlighted");
     currentHighlightedRowId = null;
@@ -271,23 +281,45 @@ function clearHighlightedFootprints() {
   }
 }
 
+function clearSelectedReference() {
+  if (selectedReferenceButton) {
+    selectedReferenceButton.classList.remove("selected-reference");
+    selectedReferenceButton.setAttribute("aria-pressed", "false");
+    selectedReferenceButton = null;
+  }
+}
+
 function createRowHighlightHandler(rowid, refs, net) {
-  return function () {
+  return function (selectedRef = null, button = null) {
+    // DOM mouse events are passed to this handler by the existing row bindings.
+    if (selectedRef && !Array.isArray(selectedRef)) {
+      if (settings.zoomToSelect && (selectedRef.button !== 0 ||
+          selectedRef.target.closest("input, button, a, select, textarea, label"))) return;
+      selectedRef = null;
+    }
+    var sameRow = currentHighlightedRowId === rowid;
     if (currentHighlightedRowId) {
-      if (currentHighlightedRowId == rowid) {
+      if (sameRow && !selectedRef && !selectedReferenceButton) {
         return;
       }
       document.getElementById(currentHighlightedRowId).classList.remove("highlighted");
     }
+    clearSelectedReference();
+    if (button) {
+      selectedReferenceButton = button;
+      button.classList.add("selected-reference");
+      button.setAttribute("aria-pressed", "true");
+    }
     document.getElementById(rowid).classList.add("highlighted");
     currentHighlightedRowId = rowid;
-    highlightedFootprints = refs ? refs.map(r => r[1]) : [];
+    var selectedRefs = selectedRef ? [selectedRef] : refs;
+    highlightedFootprints = selectedRefs ? selectedRefs.map(r => r[1]) : [];
     highlightedNet = net;
     drawHighlights();
     EventHandler.emitEvent(
       IBOM_EVENT_TYPES.HIGHLIGHT_EVENT, {
       rowid: rowid,
-      refs: refs,
+      refs: selectedRefs,
       net: net
     });
   }
@@ -372,6 +404,23 @@ function highlightFilter(s) {
     pos += parts[i].length;
   }
   return r;
+}
+
+// Render reference names as text while preserving the filter highlight.
+function appendHighlightedText(element, value) {
+  var text = String(value);
+  var lower = text.toLowerCase();
+  var pos = 0;
+  var match;
+  while (filter && (match = lower.indexOf(filter, pos)) !== -1) {
+    element.appendChild(document.createTextNode(text.substring(pos, match)));
+    var mark = document.createElement("mark");
+    mark.className = "highlight";
+    mark.textContent = text.substring(match, match + filter.length);
+    element.appendChild(mark);
+    pos = match + filter.length;
+  }
+  element.appendChild(document.createTextNode(text.substring(pos)));
 }
 
 function getBomListByLayer(layer) {
@@ -648,7 +697,7 @@ function populateBomHeader(placeHolderColumn = null, placeHolderElements = null)
   bomhead.appendChild(tr);
 }
 
-function populateBomBody(placeholderColumn = null, placeHolderElements = null) {
+function populateBomBody(placeholderColumn = null, placeHolderElements = null, preservedRefIndex = null, filterChanged = false) {
   const urlRegex = /^(https?:\/\/[^\s\/$.?#][^\s]*|file:\/\/([a-zA-Z]:|\/)[^\x00]+)$/;
   while (bom.firstChild) {
     bom.removeChild(bom.firstChild);
@@ -656,8 +705,10 @@ function populateBomBody(placeholderColumn = null, placeHolderElements = null) {
   highlightHandlers = [];
   footprintIndexToHandler = {};
   netsToHandler = {};
+  clearSelectedReference();
   currentHighlightedRowId = null;
-  var first = true;
+  var firstHandler = null;
+  var restoredSelection = null;
   var style = getComputedStyle(topmostdiv);
   var defaultNetColor = style.getPropertyValue('--track-color').trim();
 
@@ -672,6 +723,8 @@ function populateBomBody(placeholderColumn = null, placeHolderElements = null) {
       continue;
     }
     var references = null;
+    var restoredButton = null;
+    var restoredRef = null;
     var netname = null;
     var tr = document.createElement("TR");
     var td = document.createElement("TD");
@@ -704,6 +757,8 @@ function populateBomBody(placeholderColumn = null, placeHolderElements = null) {
       } else {
         references = bomentry;
       }
+      const rowElement = tr;
+      const rowReferences = references;
       // Filter hidden columns
       var columns = settings.columnOrder.filter(e => !settings.hiddenColumns.includes(e));
       columns.forEach((column) => {
@@ -733,7 +788,29 @@ function populateBomBody(placeholderColumn = null, placeHolderElements = null) {
           }
         } else if (column === "References") {
           td = document.createElement("TD");
-          td.innerHTML = highlightFilter(references.map(r => r[0]).join(", "));
+          if (!settings.zoomToSelect) {
+            td.innerHTML = highlightFilter(references.map(r => r[0]).join(", "));
+          } else {
+            rowReferences.forEach((ref, index) => {
+              if (index) td.appendChild(document.createTextNode(", "));
+              var button = document.createElement("button");
+              button.type = "button";
+              button.className = "bom-reference";
+              button.setAttribute("aria-pressed", "false");
+              if (ref[1] === preservedRefIndex) {
+                restoredButton = button;
+                restoredRef = ref;
+              }
+              appendHighlightedText(button, ref[0]);
+              button.onmousedown = e => e.stopPropagation();
+              button.onclick = e => {
+                e.stopPropagation();
+                createRowHighlightHandler(rowElement.id, rowReferences, null)(ref, button);
+                zoomToFootprints([ref[1]]);
+              };
+              td.appendChild(button);
+            });
+          }
           tr.appendChild(td);
         } else if (column === "Quantity" && settings.bommode == "grouped") {
           // Quantity
@@ -764,10 +841,21 @@ function populateBomBody(placeholderColumn = null, placeHolderElements = null) {
     }
     bom.appendChild(tr);
     var handler = createRowHighlightHandler(tr.id, references, netname);
+    if (!firstHandler) firstHandler = handler;
+    if (restoredButton) restoredSelection = { handler: handler, ref: restoredRef, button: restoredButton };
     if (settings.highlightRowOnClick) {
       tr.onmousedown = handler;
     } else {
       tr.onmousemove = handler;
+    }
+    if (settings.zoomToSelect && references !== null) {
+      const rowRefs = references;
+      const rowHandler = handler;
+      tr.onclick = function(e) {
+        if (e.button !== 0 || e.target.closest("input, button, a, select, textarea, label")) return;
+        rowHandler();
+        zoomToFootprints(rowRefs.map(r => r[1]));
+      };
     }
     highlightHandlers.push({
       id: tr.id,
@@ -781,10 +869,15 @@ function populateBomBody(placeholderColumn = null, placeHolderElements = null) {
     if (netname !== null) {
       netsToHandler[netname] = handler;
     }
-    if ((filter || reflookup) && first) {
-      handler();
-      first = false;
-    }
+  }
+  if (restoredSelection) {
+    restoredSelection.handler(restoredSelection.ref, restoredSelection.button);
+  } else if ((filter || reflookup) && firstHandler) {
+    firstHandler();
+  } else if (filterChanged && (filter || reflookup) && !firstHandler) {
+    highlightedFootprints = [];
+    highlightedNet = null;
+    drawHighlights();
   }
   EventHandler.emitEvent(
     IBOM_EVENT_TYPES.BOM_BODY_CHANGE_EVENT, {
@@ -833,9 +926,9 @@ function highlightNextRow() {
   smoothScrollToRow(currentHighlightedRowId);
 }
 
-function populateBomTable() {
+function populateBomTable(preservedRefIndex = null, filterChanged = false) {
   populateBomHeader();
-  populateBomBody();
+  populateBomBody(null, null, preservedRefIndex, filterChanged);
   setBomHandlers();
   resizableGrid(bomhead);
 }
@@ -865,8 +958,10 @@ function netClicked(net) {
 }
 
 function updateFilter(input) {
+  var preservedRefIndex = selectedReferenceButton && highlightedFootprints.length === 1
+    ? highlightedFootprints[0] : null;
   filter = input.toLowerCase();
-  populateBomTable();
+  populateBomTable(preservedRefIndex, true);
 }
 
 function updateRefLookup(input) {
