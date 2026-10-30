@@ -54,24 +54,31 @@ test('default, enable, and parent-off transitions', () => {
   assert.equal(element('zoomToSelectCheckbox').disabled, false);
   assert.equal(values.get('zoomToSelect'), 'true');
   c.setHighlightRowOnClick(false);
-  assert.equal(c.settings.zoomToSelect, false);
-  assert.equal(values.get('zoomToSelect'), 'false');
+  assert.equal(c.settings.zoomToSelect, true);
+  assert.equal(c.isZoomToSelectActive(), false);
+  assert.equal(element('zoomToSelectCheckbox').checked, true);
+  assert.equal(element('zoomToSelectCheckbox').disabled, true);
+  assert.equal(values.get('zoomToSelect'), 'true');
   c.setHighlightRowOnClick(true);
-  assert.equal(element('zoomToSelectCheckbox').checked, false);
+  assert.equal(element('zoomToSelectCheckbox').checked, true);
+  assert.equal(c.isZoomToSelectActive(), true);
 });
 
-test('restore valid saved state and normalize invalid state', () => {
+test('restore zoom preference even when click highlighting is disabled', () => {
   const valid = makePage({ highlightRowOnClick: 'true', zoomToSelect: 'true' });
   valid.context.initDefaults();
   assert.equal(valid.context.settings.zoomToSelect, true);
   assert.equal(valid.element('zoomToSelectCheckbox').checked, true);
-  const invalid = makePage({ highlightRowOnClick: 'false', zoomToSelect: 'true' });
-  invalid.context.initDefaults();
-  assert.equal(invalid.context.settings.zoomToSelect, false);
-  assert.equal(invalid.values.get('zoomToSelect'), 'false');
+  const disabled = makePage({ highlightRowOnClick: 'false', zoomToSelect: 'true' });
+  disabled.context.initDefaults();
+  assert.equal(disabled.context.settings.zoomToSelect, true);
+  assert.equal(disabled.context.isZoomToSelectActive(), false);
+  assert.equal(disabled.element('zoomToSelectCheckbox').checked, true);
+  assert.equal(disabled.element('zoomToSelectCheckbox').disabled, true);
+  assert.equal(disabled.values.get('zoomToSelect'), 'true');
 });
 
-test('import restores valid state and clears missing or inconsistent child', () => {
+test('import restores the preference and clears it when missing in older files', () => {
   const { context: c, values } = makePage();
   c.initDefaults();
   c.overwriteSettings({ highlightRowOnClick: true, zoomToSelect: true });
@@ -80,8 +87,9 @@ test('import restores valid state and clears missing or inconsistent child', () 
   c.overwriteSettings({ highlightRowOnClick: true });
   assert.equal(c.settings.zoomToSelect, false);
   c.overwriteSettings({ highlightRowOnClick: false, zoomToSelect: true });
-  assert.equal(c.settings.zoomToSelect, false);
-  assert.equal(values.get('zoomToSelect'), 'false');
+  assert.equal(c.settings.zoomToSelect, true);
+  assert.equal(c.isZoomToSelectActive(), false);
+  assert.equal(values.get('zoomToSelect'), 'true');
 });
 
 test('dependency works without browser storage', () => {
@@ -91,5 +99,33 @@ test('dependency works without browser storage', () => {
   c.setZoomToSelect(true);
   assert.equal(c.settings.zoomToSelect, true);
   c.setHighlightRowOnClick(false);
-  assert.equal(c.settings.zoomToSelect, false);
+  assert.equal(c.settings.zoomToSelect, true);
+  assert.equal(c.isZoomToSelectActive(), false);
+});
+
+test('disabling zoom resets both views only when the feature was active', () => {
+  const { context: c } = makePage();
+  c.initDefaults();
+  const resets = [];
+  c.allcanvas = { front: { layer: 'F' }, back: { layer: 'B' } };
+  c.resetTransform = layer => resets.push(layer.layer);
+  c.initDone = true;
+  c.setZoomToSelect(false);
+  assert.deepEqual(resets, []);
+  c.setHighlightRowOnClick(true);
+  c.setZoomToSelect(true);
+  assert.deepEqual(resets, []);
+  c.setZoomToSelect(false);
+  assert.deepEqual(resets, ['F', 'B']);
+  resets.length = 0;
+  c.setZoomToSelect(false);
+  assert.deepEqual(resets, []);
+  c.setZoomToSelect(true);
+  c.setHighlightRowOnClick(false);
+  assert.deepEqual(resets, []);
+  assert.equal(c.settings.zoomToSelect, true);
+  c.setHighlightRowOnClick(true);
+  assert.deepEqual(resets, []);
+  c.setZoomToSelect(false);
+  assert.deepEqual(resets, ['F', 'B']);
 });

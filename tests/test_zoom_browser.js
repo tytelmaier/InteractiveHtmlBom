@@ -38,42 +38,24 @@ test('standalone BOM fits rows and individual references without changing unrela
       assert.equal(style.font, style.cellFont);
       assert.equal(style.decoration, 'none');
     }
-    await page.evaluate(() => {
-      window.animationDraws = [];
-      const original = redrawCanvas;
-      redrawCanvas = function(layer) {
-        const start = performance.now();
-        original(layer);
-        window.animationDraws.push(performance.now() - start);
-      };
-    });
     await row.locator('td').first().click();
-    await page.waitForFunction(() => !allcanvas.front.zoomAnimation && !allcanvas.back.zoomAnimation);
-    const timings = await page.evaluate(() => window.animationDraws);
-    assert.ok(timings.length >= 3, `expected intermediate animation frames; got ${timings.length}`);
-    console.log(`Animation redraws: ${timings.length}, mean ${(timings.reduce((a, b) => a + b, 0) / timings.length).toFixed(1)} ms, max ${Math.max(...timings).toFixed(1)} ms`);
     const group = await page.evaluate(() => ({ refs: highlightedFootprints.slice(), front: { ...allcanvas.front.transform }, back: { ...allcanvas.back.transform } }));
     assert.ok(group.refs.length > 1);
     await firstRef.click();
-    await page.waitForFunction(() => !allcanvas.front.zoomAnimation && !allcanvas.back.zoomAnimation);
     const individual = await page.evaluate(() => ({ refs: highlightedFootprints.slice(), front: { ...allcanvas.front.transform }, back: { ...allcanvas.back.transform } }));
     assert.equal(individual.refs.length, 1);
     assert.ok(group.refs.includes(individual.refs[0]));
     assert.equal(await firstRef.getAttribute('aria-pressed'), 'true');
     await row.locator('td').first().click();
-    await page.waitForFunction(() => !allcanvas.front.zoomAnimation && !allcanvas.back.zoomAnimation);
     assert.equal(await page.evaluate(() => highlightedFootprints.length), group.refs.length);
     assert.equal(await firstRef.getAttribute('aria-pressed'), 'false');
     await firstRef.focus();
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => !allcanvas.front.zoomAnimation && !allcanvas.back.zoomAnimation);
     assert.equal(await page.evaluate(() => highlightedFootprints.length), 1);
     assert.equal(await firstRef.getAttribute('aria-pressed'), 'true');
     await row.locator('td').first().click();
-    await page.waitForFunction(() => !allcanvas.front.zoomAnimation && !allcanvas.back.zoomAnimation);
     await page.evaluate(() => { allcanvas.front.transform.zoom = 123; });
     await row.locator('td').first().click();
-    await page.waitForFunction(() => !allcanvas.front.zoomAnimation && !allcanvas.back.zoomAnimation);
     assert.notEqual(await page.evaluate(() => allcanvas.front.transform.zoom), 123);
     const beforeControl = await page.evaluate(() => JSON.stringify(allcanvas.front.transform));
     const checkbox = row.locator('input[type=checkbox]').first();
@@ -82,9 +64,8 @@ test('standalone BOM fits rows and individual references without changing unrela
     await page.locator('#frontcanvas').click({ button: 'right', position: { x: 20, y: 20 } });
     assert.equal(await page.evaluate(() => allcanvas.front.transform.zoom), 1);
     await row.locator('td').first().click();
-    await page.waitForFunction(() => !allcanvas.front.zoomAnimation && !allcanvas.back.zoomAnimation);
     assert.notEqual(await page.evaluate(() => allcanvas.front.transform.zoom), 1);
-    // A new target replaces the active transition; wheel input takes control.
+    // Switching targets and manual wheel zoom remain usable.
     await firstRef.evaluate(ref => {
       ref.click();
       ref.closest('tr').querySelector('td').click();
@@ -92,10 +73,7 @@ test('standalone BOM fits rows and individual references without changing unrela
     assert.equal(await page.evaluate(() => highlightedFootprints.length), group.refs.length);
     await page.locator('#frontcanvas').hover({ position: { x: 20, y: 20 } });
     await page.mouse.wheel(0, 30);
-    assert.equal(await page.evaluate(() => allcanvas.front.zoomAnimation == null), true);
-    await page.emulateMedia({ reducedMotion: 'reduce' });
     await firstRef.click();
-    assert.equal(await page.evaluate(() => !allcanvas.front.zoomAnimation && !allcanvas.back.zoomAnimation), true);
     assert.equal(await page.evaluate(() => highlightedFootprints.length), 1);
     const referenceName = await firstRef.innerText();
     const selectionBeforeThemeChange = await page.evaluate(() => ({
@@ -110,7 +88,6 @@ test('standalone BOM fits rows and individual references without changing unrela
       assert.deepEqual(await page.evaluate(() => highlightedFootprints.slice()), [selectionBeforeThemeChange.ref]);
       assert.equal(await page.evaluate(() => JSON.stringify(allcanvas.front.transform)), selectionBeforeThemeChange.front);
       assert.equal(await page.evaluate(() => JSON.stringify(allcanvas.back.transform)), selectionBeforeThemeChange.back);
-      assert.equal(await page.evaluate(() => !allcanvas.front.zoomAnimation && !allcanvas.back.zoomAnimation), true);
     }
     for (const dark of [false, true]) {
       await page.evaluate(({ dark, referenceName }) => { setDarkMode(dark); updateFilter(referenceName); }, { dark, referenceName });
@@ -184,8 +161,54 @@ test('standalone BOM fits rows and individual references without changing unrela
     assert.deepEqual(await measureRows(), beforeSelection);
     await page.locator(`#${longestRow.id} .bom-reference`).last().evaluate(el => el.click());
     assert.deepEqual(await measureRows(), beforeSelection);
-    await page.evaluate(() => setZoomToSelect(false));
+    await page.evaluate(() => {
+      Object.assign(allcanvas.front.transform, { zoom: 4, panx: 10, pany: 20 });
+      Object.assign(allcanvas.back.transform, { zoom: 3, panx: -10, pany: -20 });
+      setZoomToSelect(false);
+    });
+    assert.deepEqual(await page.evaluate(() => [allcanvas.front, allcanvas.back].map(({ transform }) =>
+      [transform.zoom, transform.panx, transform.pany])), [[1, 0, 0], [1, 0, 0]]);
     assert.equal(await page.locator('.bom-reference').count(), 0);
+    await page.evaluate(() => {
+      setZoomToSelect(true);
+      Object.assign(allcanvas.front.transform, { zoom: 2, panx: 10, pany: 20 });
+      Object.assign(allcanvas.back.transform, { zoom: 3, panx: -10, pany: -20 });
+      setHighlightRowOnClick(false);
+    });
+    assert.deepEqual(await page.evaluate(() => [allcanvas.front, allcanvas.back].map(({ transform }) =>
+      [transform.zoom, transform.panx, transform.pany])), [[2, 10, 20], [3, -10, -20]]);
+    assert.equal(await page.evaluate(() => settings.zoomToSelect), true);
+    assert.equal(await page.locator('#zoomToSelectCheckbox').isChecked(), true);
+    assert.equal(await page.locator('#zoomToSelectCheckbox').isDisabled(), true);
+    assert.equal(await page.locator('.bom-reference').count(), 0);
+    await page.locator('#bombody tr td').first().click();
+    assert.deepEqual(await page.evaluate(() => [allcanvas.front, allcanvas.back].map(({ transform }) =>
+      [transform.zoom, transform.panx, transform.pany])), [[2, 10, 20], [3, -10, -20]]);
+    await page.evaluate(() => setHighlightRowOnClick(true));
+    assert.equal(await page.locator('#zoomToSelectCheckbox').isEnabled(), true);
+    assert.equal(await page.locator('#zoomToSelectCheckbox').isChecked(), true);
+    assert.deepEqual(await page.evaluate(() => [allcanvas.front, allcanvas.back].map(({ transform }) =>
+      [transform.zoom, transform.panx, transform.pany])), [[2, 10, 20], [3, -10, -20]]);
+    await page.locator('#bombody tr td').first().click();
+    assert.notDeepEqual(await page.evaluate(() => [allcanvas.front, allcanvas.back].map(({ transform }) =>
+      [transform.zoom, transform.panx, transform.pany])), [[2, 10, 20], [3, -10, -20]]);
+    await page.evaluate(() => setHighlightRowOnClick(false));
+    await page.reload();
+    await page.waitForFunction(() => window.initDone);
+    assert.equal(await page.locator('#zoomToSelectCheckbox').isChecked(), true);
+    assert.equal(await page.locator('#zoomToSelectCheckbox').isDisabled(), true);
+    assert.equal(await page.evaluate(() => isZoomToSelectActive()), false);
+    assert.equal(await page.locator('.bom-reference').count(), 0);
+    await page.evaluate(() => setHighlightRowOnClick(true));
+    assert.equal(await page.locator('#zoomToSelectCheckbox').isChecked(), true);
+    assert.equal(await page.evaluate(() => isZoomToSelectActive()), true);
+    await page.evaluate(() => {
+      Object.assign(allcanvas.front.transform, { zoom: 3, panx: 2, pany: 4 });
+      Object.assign(allcanvas.back.transform, { zoom: 2, panx: -2, pany: -4 });
+      setZoomToSelect(false);
+    });
+    assert.deepEqual(await page.evaluate(() => [allcanvas.front, allcanvas.back].map(({ transform }) =>
+      [transform.zoom, transform.panx, transform.pany])), [[1, 0, 0], [1, 0, 0]]);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

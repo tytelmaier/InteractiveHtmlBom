@@ -585,10 +585,8 @@ function initDefaults() {
   }
   initBooleanSetting("dnpOutline", false, "dnpOutlineCheckbox", dnpOutline);
   initBooleanSetting("redrawOnDrag", config.redraw_on_drag, "dragCheckbox", setRedrawOnDrag);
-  // Read the child first: initializing a disabled parent clears its saved value.
-  var savedZoomToSelect = readStorage("zoomToSelect") === "true";
   initBooleanSetting("highlightRowOnClick", false, "highlightRowOnClickCheckbox", setHighlightRowOnClick);
-  setZoomToSelect(savedZoomToSelect);
+  initBooleanSetting("zoomToSelect", false, "zoomToSelectCheckbox", setZoomToSelect);
   initBooleanSetting("darkmode", config.dark_mode, "darkmodeCheckbox", setDarkMode);
 
   var fields = ["checkboxes", "References"].concat(config.fields).concat(["Quantity"]);

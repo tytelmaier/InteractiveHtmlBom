@@ -23,33 +23,16 @@ function makeRenderer(rotation, offsetBackRotation) {
   return context;
 }
 
-test('animation progresses smoothly, reaches target, and can be cancelled', () => {
+test('zoom applies immediately without scheduling animation frames', () => {
   const c = makeRenderer(0, false);
-  let id = 0;
-  const callbacks = new Map();
-  c.window.matchMedia = () => ({ matches: false });
-  c.requestAnimationFrame = callback => { callbacks.set(++id, callback); return id; };
-  c.cancelAnimationFrame = handle => callbacks.delete(handle);
-  const frame = time => { const [handle, callback] = callbacks.entries().next().value; callbacks.delete(handle); callback(time); };
+  c.requestAnimationFrame = () => { throw new Error('zoom must not schedule animation'); };
   const canvas = c.allcanvas.front;
-  const start = { ...canvas.transform };
+  const initialZoom = canvas.transform.zoom;
   c.zoomToFootprints([0]);
-  frame(100);
-  assert.equal(canvas.transform.zoom, start.zoom);
-  frame(300);
-  const middle = { ...canvas.transform };
-  assert.notEqual(middle.zoom, start.zoom);
-  frame(500);
-  assert.notEqual(canvas.transform.zoom, middle.zoom);
-  assert.equal(canvas.zoomAnimation, null);
-  assert.equal(callbacks.size, 0);
+  assert.notEqual(canvas.transform.zoom, initialZoom);
+  const firstView = JSON.stringify(canvas.transform);
   c.zoomToFootprints([1]);
-  frame(600);
-  c.cancelZoomAnimation(canvas);
-  const stopped = JSON.stringify(canvas.transform);
-  assert.equal(callbacks.size, 0);
-  assert.equal(canvas.zoomAnimation, null);
-  assert.equal(JSON.stringify(canvas.transform), stopped);
+  assert.notEqual(JSON.stringify(canvas.transform), firstView);
 });
 
 function screenCorners(fp, canvas, settings) {

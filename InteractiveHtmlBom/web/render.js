@@ -675,50 +675,8 @@ function applyRotation(bbox, flip) {
   }
 }
 
-// Each canvas has its own animation so manual interaction can stop it immediately.
-function cancelZoomAnimation(layerdict) {
-  if (layerdict.zoomAnimation != null) {
-    cancelAnimationFrame(layerdict.zoomAnimation);
-    layerdict.zoomAnimation = null;
-  }
-}
-
-function animateZoomTo(layerdict, zoom, centerx, centery) {
-  var t = layerdict.transform;
-  var width = layerdict.bg.width;
-  var height = layerdict.bg.height;
-  var startZoom = t.zoom;
-  var startX = width / (2 * startZoom) - t.panx;
-  var startY = height / (2 * startZoom) - t.pany;
-  var reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  function apply(progress) {
-    var eased = progress * progress * (3 - 2 * progress);
-    t.zoom = Math.exp(Math.log(startZoom) + (Math.log(zoom) - Math.log(startZoom)) * eased);
-    var x = startX + (centerx - startX) * eased;
-    var y = startY + (centery - startY) * eased;
-    t.panx = width / (2 * t.zoom) - x;
-    t.pany = height / (2 * t.zoom) - y;
-    redrawCanvas(layerdict);
-  }
-  if (reducedMotion) {
-    apply(1);
-    return;
-  }
-  var startTime = null;
-  function frame(timestamp) {
-    if (startTime === null) startTime = timestamp;
-    var progress = Math.min(1, (timestamp - startTime) / 400);
-    apply(progress);
-    layerdict.zoomAnimation = progress < 1 ? requestAnimationFrame(frame) : null;
-  }
-  layerdict.zoomAnimation = requestAnimationFrame(frame);
-}
-
 // Frame the footprint bounding boxes on each visible side independently.
 function zoomToFootprints(indices) {
-  // A new selection supersedes both sides, including a side with no new target.
-  cancelZoomAnimation(allcanvas.front);
-  cancelZoomAnimation(allcanvas.back);
   if (settings.bomlayout === "bom-only") return;
   for (var layerdict of [allcanvas.front, allcanvas.back]) {
     var flip = layerdict.layer === "B";
@@ -755,7 +713,10 @@ function zoomToFootprints(indices) {
     var centerx = (minx + maxx) / 2 * t.s + (flip ? -t.x : t.x);
     var centery = (miny + maxy) / 2 * t.s + t.y;
     if (!Number.isFinite(zoom) || zoom <= 0 || !Number.isFinite(centerx) || !Number.isFinite(centery)) continue;
-    animateZoomTo(layerdict, zoom, centerx, centery);
+    t.zoom = zoom;
+    t.panx = width / (2 * zoom) - centerx;
+    t.pany = height / (2 * zoom) - centery;
+    redrawCanvas(layerdict);
   }
 }
 
@@ -792,7 +753,6 @@ function redrawCanvas(layerdict) {
 }
 
 function resizeCanvas(layerdict) {
-  cancelZoomAnimation(layerdict);
   var canvasdivid = {
     "F": "frontcanvas",
     "B": "backcanvas"
@@ -939,7 +899,6 @@ function handlePointerDown(e, layerdict) {
   if (e.button != 0 && e.button != 1) {
     return;
   }
-  cancelZoomAnimation(layerdict);
   e.preventDefault();
   e.stopPropagation();
 
@@ -1001,7 +960,6 @@ function handlePointerLeave(e, layerdict) {
 }
 
 function resetTransform(layerdict) {
-  cancelZoomAnimation(layerdict);
   layerdict.transform.panx = 0;
   layerdict.transform.pany = 0;
   layerdict.transform.zoom = 1;
@@ -1104,7 +1062,6 @@ function handlePointerMove(e, layerdict) {
 }
 
 function handleMouseWheel(e, layerdict) {
-  cancelZoomAnimation(layerdict);
   e.preventDefault();
   e.stopPropagation();
   var t = layerdict.transform;

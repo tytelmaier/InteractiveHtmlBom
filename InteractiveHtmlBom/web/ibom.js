@@ -142,24 +142,25 @@ function setHighlightRowOnClick(value) {
   var zoomCheckbox = document.getElementById("zoomToSelectCheckbox");
   zoomCheckbox.disabled = !value;
   document.getElementById("zoomToSelectLabel").classList.toggle("disabled", !value);
-  if (!value) {
-    setZoomToSelect(false, false);
-  }
   if (initDone) {
     populateBomTable();
   }
 }
 
 function setZoomToSelect(value, rebuild = true) {
-  var changed = settings.zoomToSelect !== (!!value && !!settings.highlightRowOnClick);
-  settings.zoomToSelect = !!value && !!settings.highlightRowOnClick;
-  if (!settings.zoomToSelect && initDone) {
-    cancelZoomAnimation(allcanvas.front);
-    cancelZoomAnimation(allcanvas.back);
-  }
+  var changed = settings.zoomToSelect !== !!value;
+  settings.zoomToSelect = !!value;
   writeStorage("zoomToSelect", settings.zoomToSelect);
   document.getElementById("zoomToSelectCheckbox").checked = settings.zoomToSelect;
+  if (changed && !settings.zoomToSelect && initDone) {
+    resetTransform(allcanvas.front);
+    resetTransform(allcanvas.back);
+  }
   if (changed && rebuild && initDone) populateBomTable();
+}
+
+function isZoomToSelectActive() {
+  return settings.highlightRowOnClick && settings.zoomToSelect;
 }
 
 function getStoredCheckboxRefs(checkbox) {
@@ -293,7 +294,7 @@ function createRowHighlightHandler(rowid, refs, net) {
   return function (selectedRef = null, button = null) {
     // DOM mouse events are passed to this handler by the existing row bindings.
     if (selectedRef && !Array.isArray(selectedRef)) {
-      if (settings.zoomToSelect && (selectedRef.button !== 0 ||
+      if (isZoomToSelectActive() && (selectedRef.button !== 0 ||
           selectedRef.target.closest("input, button, a, select, textarea, label"))) return;
       selectedRef = null;
     }
@@ -788,7 +789,7 @@ function populateBomBody(placeholderColumn = null, placeHolderElements = null, p
           }
         } else if (column === "References") {
           td = document.createElement("TD");
-          if (!settings.zoomToSelect) {
+          if (!isZoomToSelectActive()) {
             td.innerHTML = highlightFilter(references.map(r => r[0]).join(", "));
           } else {
             rowReferences.forEach((ref, index) => {
@@ -848,7 +849,7 @@ function populateBomBody(placeholderColumn = null, placeHolderElements = null, p
     } else {
       tr.onmousemove = handler;
     }
-    if (settings.zoomToSelect && references !== null) {
+    if (isZoomToSelectActive() && references !== null) {
       const rowRefs = references;
       const rowHandler = handler;
       tr.onclick = function(e) {
